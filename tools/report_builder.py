@@ -18,7 +18,12 @@ BRAND_PRIMARY = colors.HexColor("#1F6F5C")
 BRAND_ACCENT = colors.HexColor("#E8B84B")
 BRAND_TEXT = colors.HexColor("#222222")
 
+ASSETS_FONT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "fonts")
+
 FONT_CANDIDATES = [
+    # 저장소에 번들된 폰트 (로컬/클라우드 어디서 실행되든 항상 동작)
+    (os.path.join(ASSETS_FONT_DIR, "NanumGothic-Regular.ttf"), os.path.join(ASSETS_FONT_DIR, "NanumGothic-Bold.ttf")),
+    # Windows 로컬 실행 시 시스템 폰트 (번들 폰트가 없을 때의 대비책)
     (r"C:\Windows\Fonts\malgun.ttf", r"C:\Windows\Fonts\malgunbd.ttf"),
 ]
 
