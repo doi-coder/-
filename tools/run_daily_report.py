@@ -2,7 +2,10 @@
 
 절차: 데이터랩 트렌드 조회 -> 상승 카테고리 선정 -> 블로그 포화도 확인 ->
 유튜브 화제 콘텐츠 확인 -> 최근 추천 이력과 중복 제거 -> 추천 주제 산출 ->
-PDF 생성 -> 메일 발송 -> 로그 기록.
+PDF 생성 -> 로그 기록.
+
+PDF는 이메일로 보내지 않는다 — 이 스크립트를 실행하는 에이전트가 생성된 PDF를
+채팅 응답에 직접 첨부해서 전달한다 (workflows/daily_health_topic_report.md 참고).
 
 각 데이터 소스는 실패해도 전체가 멈추지 않고, 캐시된 이전 결과로 대체한 뒤
 리포트에 "갱신 실패" 표시를 남긴다. 사용법: `python tools/run_daily_report.py`
@@ -18,7 +21,6 @@ import naver_trend
 import naver_blog_search
 import youtube_trend
 import report_builder
-import mailer
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TMP_DIR = os.path.join(BASE_DIR, ".tmp")
@@ -188,17 +190,8 @@ def run():
         pdf_path = os.path.join(REPORT_DIR, f"health_report_{data['report_date']}.pdf")
         report_builder.generate_report(data, pdf_path)
         log_lines.append(f"PDF 생성 완료: {pdf_path}")
-
-        try:
-            mailer.send_report_email(
-                pdf_path,
-                subject=f"[건강 콘텐츠 트렌드] {data['report_date']} 포스팅 주제 추천",
-                body_text="오늘의 건강 콘텐츠 트렌드 리포트를 첨부합니다.",
-            )
-            log_lines.append("메일 발송 완료")
-        except Exception as e:
-            log_lines.append(f"메일 발송 실패: {e}\n{traceback.format_exc()}")
-            log_lines.append(f"PDF는 로컬에 남아있음: {pdf_path}")
+        log_lines.append(f"REPORT_READY_FOR_DELIVERY: {pdf_path}")
+        log_lines.append(f"추천 주제 {len(data['recommended_topics'])}개: " + ", ".join(t['topic'] for t in data['recommended_topics']))
 
     except Exception as e:
         log_lines.append(f"치명적 오류로 실행 중단: {e}\n{traceback.format_exc()}")
