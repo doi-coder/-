@@ -132,6 +132,19 @@ def generate_report(data, output_path):
     if titles:
         story.append(Paragraph("네이버 블로그 제목 후보", styles["KHeading"]))
         story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#DDDDDD"), spaceAfter=6))
+        if data.get("recommended_title"):
+            story.append(Paragraph(
+                f"★ 이번 회차 추천 제목: {data['recommended_title']}"
+                f" (키워드: {data.get('recommended_keyword', '-')}) — 초안 별첨",
+                styles["KBody"],
+            ))
+            if data.get("search_intent"):
+                story.append(Paragraph(f"<b>검색 의도</b>: {data['search_intent']}", styles["KBody"]))
+            if data.get("target_analysis"):
+                story.append(Paragraph(f"<b>타겟 독자</b>: {data['target_analysis']}", styles["KBody"]))
+            if data.get("keyword_analysis"):
+                story.append(Paragraph(f"<b>키워드 분석</b>: {data['keyword_analysis']}", styles["KBody"]))
+            story.append(Spacer(1, 4))
         story.append(ListFlowable(
             [ListItem(Paragraph(t, styles["KBody"])) for t in titles],
             bulletType="bullet", start="circle", leftIndent=12,
@@ -192,6 +205,11 @@ if __name__ == "__main__":
             ],
             "sources": ["삼성전자 반도체 훈풍 (매일경제) - https://example.com/news1"],
             "suggested_titles": ["반도체 훈풍 코스피, 주린이가 지금 봐야 할 것", "삼성전자 오른 진짜 이유 (초보자용 정리)"],
+            "recommended_title": "반도체 훈풍 코스피, 주린이가 지금 봐야 할 것",
+            "recommended_keyword": "반도체 훈풍 코스피",
+            "search_intent": "오늘 코스피가 왜 올랐는지, 내 계좌에도 영향이 있는지 궁금해서 검색",
+            "target_analysis": "국내 주식을 조금씩 하고 있는 3040 직장인 초보 투자자. 반도체 관련주를 들고 있거나 관심 있는 층.",
+            "keyword_analysis": "'반도체 훈풍 코스피'는 오늘 뉴스와 직접 연결되면서도 블로그 경쟁이 아직 과열되지 않은 시의성 키워드.",
             "data_note": "이 리포트는 발행 시점 기준 웹 검색 결과를 요약한 것으로, 장중 상황과 다를 수 있습니다.",
         }
         out = generate_report(sample, os.path.join(os.path.dirname(__file__), "..", ".tmp", "sample_economy_report.pdf"))

@@ -2,8 +2,15 @@
 
 브랜드 컬러/로고는 지정된 게 없어서 기본값을 넣어뒀음.
 나중에 사장님이 로고 파일/브랜드 컬러를 주면 BRAND_* 상수와 logo_path만 바꾸면 됨.
+
+사용법: `python tools/report_builder.py <입력 json 경로> <출력 pdf 경로>` (인자 없이 실행하면
+샘플 데이터로 테스트). 입력 JSON은 `tools/run_daily_report.py`가 만든 candidates 데이터에,
+실행하는 에이전트가 title/search_intent/target_analysis/keyword_analysis를 채운 posts를
+포함해야 한다 (data 형식은 generate_report() 아래 docstring 참고).
 """
+import json
 import os
+import sys
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
@@ -11,7 +18,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, PageBreak,
+    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, PageBreak, HRFlowable,
 )
 
 BRAND_PRIMARY = colors.HexColor("#1F6F5C")
@@ -82,8 +89,15 @@ def generate_report(data, output_path, logo_path=None):
     {
       "report_date": "2026-07-25",
       "failed_sources": ["youtube"],           # 이번 실행에서 갱신 실패한 소스 (없으면 [])
-      "recommended_topics": [
-        {"topic": str, "segment": str, "reason": str}, ...
+      "posts": [
+        {
+          "keyword": str,                      # 메인 키워드
+          "title": str,                        # 네이버 블로그 제목
+          "search_intent": str,                # 이 키워드를 검색하는 사람들의 니즈/의도
+          "target_analysis": str,               # 타겟 독자 분석
+          "keyword_analysis": str,              # 메인 키워드 분석(경쟁도·상승률 등 근거)
+          "reason": str,                        # run_daily_report.py가 만든 데이터 기반 추천 이유
+        }, ...
       ],
       "segment_trends": {"30대 x 여성": [{"category": str, "rising_pct": float|None}, ...], ...},
       "youtube_top": [{"title","channel","view_count","like_count","url"}, ...],
@@ -109,16 +123,16 @@ def generate_report(data, output_path, logo_path=None):
         ))
         story.append(Spacer(1, 10))
 
-    story.append(Paragraph("오늘의 추천 포스팅 주제", styles["KHeading"]))
-    rows = [["순위", "주제", "타겟", "추천 이유"]]
-    for i, topic in enumerate(data.get("recommended_topics", []), start=1):
-        rows.append([
-            str(i),
-            Paragraph(topic["topic"], styles["KBody"]),
-            topic["segment"],
-            Paragraph(topic["reason"], styles["KBody"]),
-        ])
-    story.append(_table(rows, [15 * mm, 55 * mm, 30 * mm, 70 * mm], font, font_bold))
+    for i, post in enumerate(data.get("posts", []), start=1):
+        story.append(Paragraph(f"{i}. {post['title']}", styles["KHeading"]))
+        story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#DDDDDD"), spaceAfter=6))
+        story.append(Paragraph(f"<b>메인 키워드</b>: {post['keyword']}", styles["KBody"]))
+        story.append(Paragraph(f"<b>검색 의도</b>: {post.get('search_intent', '-')}", styles["KBody"]))
+        story.append(Paragraph(f"<b>타겟 독자</b>: {post.get('target_analysis', '-')}", styles["KBody"]))
+        story.append(Paragraph(f"<b>키워드 분석</b>: {post.get('keyword_analysis', '-')}", styles["KBody"]))
+        story.append(Paragraph(f"※ 데이터 근거: {post.get('reason', '-')}", styles["KNote"]))
+        story.append(Paragraph("※ 전체 포스팅 초안은 별첨 텍스트 파일을 참고하세요.", styles["KNote"]))
+        story.append(Spacer(1, 12))
 
     story.append(Paragraph("세그먼트별 상승 키워드 (연령대 x 성별)", styles["KHeading"]))
     rows = [["세그먼트", "상위 상승 카테고리"]]
@@ -166,15 +180,37 @@ def generate_report(data, output_path, logo_path=None):
 
 
 if __name__ == "__main__":
-    sample = {
-        "report_date": "2026-07-25",
-        "failed_sources": [],
-        "recommended_topics": [
-            {"topic": "오메가3 vs 유산균, 뭘 먼저 먹어야 할까", "segment": "30대 x 여성", "reason": "검색 관심도 30일간 +42% 상승, 블로그 경쟁 낮음"},
-        ],
-        "segment_trends": {"30대 x 여성": [{"category": "영양제/보충제", "rising_pct": 42.3}]},
-        "youtube_top": [{"title": "샘플 영상", "channel": "샘플 채널", "view_count": 123456, "like_count": 3456, "url": "https://youtube.com"}],
-        "blog_saturation": [{"keyword": "오메가3", "total_count": 152000}],
-    }
-    out = generate_report(sample, os.path.join(os.path.dirname(__file__), "..", ".tmp", "sample_report.pdf"))
-    print(f"생성됨: {out}")
+    if len(sys.argv) >= 3:
+        in_path, out_path = sys.argv[1], sys.argv[2]
+        with open(in_path, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+        result = generate_report(payload, out_path)
+        print(f"생성됨: {result}")
+    else:
+        sample = {
+            "report_date": "2026-07-25",
+            "failed_sources": [],
+            "posts": [
+                {
+                    "keyword": "오메가3",
+                    "title": "오메가3 vs 유산균, 뭘 먼저 먹어야 할까",
+                    "search_intent": "둘 다 챙겨 먹어야 한다는 건 아는데 뭐부터 시작할지, 같이 먹어도 되는지 궁금해서 검색",
+                    "target_analysis": "건강기능식품에 관심 생긴 30대 여성. 아직 뭘 먼저 사야 할지 결정 못 한 입문 단계.",
+                    "keyword_analysis": "'오메가3' 자체는 포화도 높지만(15만건), '오메가3 유산균 순서'처럼 비교형 롱테일은 상대적으로 경쟁이 낮음. 검색 관심도 30일간 +42% 상승.",
+                    "reason": "검색 관심도 30일간 +42% 상승, 블로그 경쟁 낮음. 매일 다른 카테고리를 다루기 위한 로테이션 배정.",
+                },
+                {
+                    "keyword": "번아웃증후군",
+                    "title": "번아웃증후군, 남 일 아니었다 (직장인 자가진단+관리법)",
+                    "search_intent": "본인 증상이 번아웃이 맞는지 확인하고, 당장 시도해볼 관리법을 찾는 실행형 검색",
+                    "target_analysis": "야근·성과 압박이 큰 3040 직장인, 특히 관리자급. 병원 가기 전에 스스로 먼저 확인해보고 싶어함.",
+                    "keyword_analysis": "'번아웃증후군' 블로그 경쟁도 보통, 최근 7일 상승률 +18.5%로 시의성 있음.",
+                    "reason": "검색 관심도 최근 7일 평균이 이전 7일 대비 +18.5% 상승 (타겟: 40대 x 남성), 블로그 경쟁도 보통. 매일 다른 카테고리를 다루기 위한 로테이션 배정.",
+                },
+            ],
+            "segment_trends": {"30대 x 여성": [{"category": "영양제/보충제", "rising_pct": 42.3}]},
+            "youtube_top": [{"title": "샘플 영상", "channel": "샘플 채널", "view_count": 123456, "like_count": 3456, "url": "https://youtube.com"}],
+            "blog_saturation": [{"keyword": "오메가3", "total_count": 152000}],
+        }
+        out = generate_report(sample, os.path.join(os.path.dirname(__file__), "..", ".tmp", "sample_report.pdf"))
+        print(f"생성됨: {out}")
