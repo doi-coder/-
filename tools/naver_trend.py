@@ -26,6 +26,33 @@ AGE_BUCKETS = {
 }
 GENDERS = {"남성": "m", "여성": "f"}
 
+ECONOMY_PRACTICAL_CATEGORIES = {
+    "대출/전세자금": ["전세자금대출", "신용대출한도", "중도상환수수료"],
+    "청약/부동산정책": ["청약통장", "특별공급", "생애최초주택"],
+    "절세/연말정산": ["연말정산", "종합소득세", "세액공제"],
+    "카드혜택": ["신용카드혜택", "체크카드추천", "카드전월실적"],
+    "앱테크": ["앱테크", "만보기적립", "리워드앱"],
+    "부업/부수입": ["부업추천", "재택부업", "부수입만들기"],
+    "정부지원금": ["청년지원금", "정부지원금신청", "근로장려금"],
+}
+
+
+def keyword_for_category(category, categories=None, today=None):
+    """카테고리 안의 구체적 키워드 중 하나를 날짜 기반 로테이션으로 고른다.
+
+    상승률 1위만 계속 뽑으면 그 카테고리 안에서도 특정 키워드(예: '근로장려금')만 매번 반복되는
+    문제가 있었다(건강 리포트에서 먼저 발견, 2026-08-09). `.tmp/`의 추천 이력은 실행마다 초기화될
+    수 있어 신뢰할 수 없으므로, 저장 없이도 항상 같은 결과를 내는 날짜(day-of-year) 로테이션을
+    쓴다 — 같은 카테고리가 다시 배정되는 날마다 키워드가 자동으로 바뀐다.
+    """
+    import datetime
+    categories = categories or ECONOMY_PRACTICAL_CATEGORIES
+    today = today or datetime.date.today()
+    keywords = categories[category]
+    idx = today.timetuple().tm_yday % len(keywords)
+    return keywords[idx]
+
+
 HEALTH_CATEGORIES = {
     "다이어트/체중관리": ["다이어트", "간헐적단식", "저탄고지", "체지방감량", "다이어트식단", "요요현상", "복부지방"],
     "수면/피로": ["불면증", "수면의질", "수면무호흡증", "만성피로", "멜라토닌", "낮잠"],
