@@ -146,7 +146,7 @@
   운영·시스템 각도로만 다룬다.
 - **3개 주제는 서로 다른 출처에서 하나씩 고른다** (2026-11-01 확정). 에이전트의 머릿속 지식만으로
   주제를 떠올리지 않기 위함이다. 각 주제의 `source`/`source_detail`에 출처를 적는다.
-  1. `"지식iN 질문"` — JSON의 `or_questions`(실제로 사람들이 올린 최신 질문)에서 블로그 글로
+  1. `"지식iN 질문"` — JSON의 `or_questions`(실제로 사람들이 올린 관련 질문, 날짜마다 다른 페이지)에서 블로그 글로
      풀 만한 질문을 고른다. `source_detail`에는 질문 제목과 링크. 비슷한 질문이 여러 개면
      수요가 있다는 신호이니 우선한다. 질문이 비어 있으면(수집 실패) 2번에서 하나 더 고른다.
   2. `"업무 지식 체크리스트 빈칸"` — `data/or_knowledge_map.md`에서 ⬜(아직 안 씀) 또는
@@ -207,7 +207,7 @@
 - `tools/naver_blog_search.py` — 블로그 검색 (경쟁도/포화도 참고자료)
 - `tools/naver_searchad.py` — 검색광고 연관키워드 + 월간 검색량 (건강 롱테일 키워드. 키:
   SEARCHAD_API_KEY / SEARCHAD_SECRET_KEY / SEARCHAD_CUSTOMER_ID, 없으면 자동으로 건너뜀)
-- `tools/naver_kin_search.py` — 지식iN 최신 질문 수집 (수술실 주제 후보, 같은 네이버 키 사용)
+- `tools/naver_kin_search.py` — 지식iN 관련 질문 수집 (수술실 주제 후보, 같은 네이버 키 사용)
 - `tools/youtube_trend.py` — 유튜브 인기 건강 콘텐츠
 - `tools/run_daily_report.py` — 위 3개를 순서대로 실행해 오늘의 후보 데이터(JSON)를 만드는
   1단계 오케스트레이터. PDF는 만들지 않는다 — 검색의도 분석·제목·초안 작성은 사람(에이전트)이

@@ -167,7 +167,7 @@ def generate_report(data, output_path, logo_path=None):
 
     or_questions = data.get("or_questions", [])
     if or_questions:
-        story.append(Paragraph("참고: 지식iN 수술 관련 최신 질문", styles["KHeading"]))
+        story.append(Paragraph("참고: 지식iN 수술 관련 질문", styles["KHeading"]))
         rows = [["검색어", "질문"]]
         for q in or_questions[:15]:
             rows.append([

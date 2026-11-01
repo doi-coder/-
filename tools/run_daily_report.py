@@ -163,13 +163,18 @@ def _longtail_options(category, seed, log):
     """
     if not naver_searchad.is_configured():
         return []
-    others = [k for k in naver_trend.HEALTH_CATEGORIES[category] if k != seed]
+    # 씨앗 하나만 넣는다. 여러 개를 넣으면 결과가 섞이고(루테인 -> 마그네슘), 연관키워드 도구는
+    # 광고 관점의 넓은 키워드(병원, 강남역 등)도 같이 주기 때문에 씨앗이 포함된 키워드만 남긴다.
+    # (2026-11-01 실제 실행에서 확인된 문제)
     try:
-        rows = naver_searchad.related_keywords([seed] + others[:4])
+        rows = naver_searchad.related_keywords([seed])
     except Exception as e:
         log.append(f"[naver_searchad:{seed}] 실패: {e}")
         return []
-    rows = [r for r in rows if r["monthly_total"] >= LONGTAIL_MIN_MONTHLY]
+    seed_key = seed.replace(" ", "")
+    rows = [r for r in rows
+            if seed_key in r["keyword"].replace(" ", "")
+            and r["monthly_total"] >= LONGTAIL_MIN_MONTHLY]
     rows.sort(key=lambda r: r["monthly_total"], reverse=True)
     options = []
     for r in rows[:LONGTAIL_PER_CANDIDATE * 2]:
@@ -317,7 +322,7 @@ def run():
         else:
             log_lines.append("검색광고 API 키 없음 — 롱테일 후보 없이 기존 키워드로 진행")
         log_lines.append("오늘 수술실 주제 축: " + ", ".join(data["or_axes"]))
-        log_lines.append(f"지식iN 수술 관련 최신 질문 {len(data['or_questions'])}개 수집")
+        log_lines.append(f"지식iN 수술 관련 질문 {len(data['or_questions'])}개 수집")
 
     except Exception as e:
         log_lines.append(f"치명적 오류로 실행 중단: {e}\n{traceback.format_exc()}")
