@@ -63,7 +63,6 @@ OR_TOPIC_AXES = [
 ]
 OR_TOPICS_PER_DAY = 3
 
-SATURATION_LABELS = [(50_000, "낮음"), (200_000, "보통")]
 
 # 검색광고 연관키워드(롱테일) 설정 — 2026-11-01 추가. 키가 없으면 이 단계는 건너뛴다.
 LONGTAIL_MIN_MONTHLY = 300      # 월간 검색량(PC+모바일)이 이보다 적은 키워드는 버림
@@ -107,13 +106,6 @@ def _with_fallback(name, fetch_fn, failed_sources, log):
         return cached
 
 
-def _saturation_label(total_count):
-    for threshold, label in SATURATION_LABELS:
-        if total_count < threshold:
-            return label
-    return "높음"
-
-
 def _load_history():
     if os.path.exists(HISTORY_PATH):
         with open(HISTORY_PATH, "r", encoding="utf-8") as f:
@@ -155,11 +147,13 @@ def _keyword_for_category(category, today):
     return keywords[idx]
 
 
-def _longtail_options(category, seed, log):
-    """씨앗 키워드 + 같은 카테고리 키워드로 연관 키워드를 받아 '기회 점수' 순으로 정리.
+def _longtail_options(seed, log):
+    """씨앗 키워드로 검색광고 연관키워드를 받아, 씨앗이 들어간 롱테일만 월간 검색량 순으로 정리.
 
-    기회 점수 = 월간 검색량 / 블로그 게시물 수. 검색은 많은데 글은 적을수록 높다.
-    에이전트는 이 목록에서 이미 쓴 글과 겹치지 않는 키워드를 골라 메인 키워드로 쓴다.
+    여기 들어가는 값은 검색광고 API(월간 검색량·광고 경쟁도)뿐이다. 네이버 '검색 API'(블로그 글 수
+    등)는 섞지 않는다 — 2026-09-07 개정 약관이 검색 API 결과를 AI에 넣는 것을 금지하기 때문
+    (자세한 내용은 workflows/daily_health_topic_report.md "네이버 검색 데이터 취급 원칙").
+    블로그 글 수는 _display_blog_counts()로 따로 모아 PDF에만 표시한다.
     """
     if not naver_searchad.is_configured():
         return []
@@ -176,20 +170,18 @@ def _longtail_options(category, seed, log):
             if seed_key in r["keyword"].replace(" ", "")
             and r["monthly_total"] >= LONGTAIL_MIN_MONTHLY]
     rows.sort(key=lambda r: r["monthly_total"], reverse=True)
-    options = []
-    for r in rows[:LONGTAIL_PER_CANDIDATE * 2]:
-        if len(options) >= LONGTAIL_PER_CANDIDATE:
-            break
+    return rows[:LONGTAIL_PER_CANDIDATE]
+
+
+def _display_blog_counts(keywords, log):
+    """PDF 표시 전용: 키워드별 네이버 블로그 검색 결과 수. AI용 JSON에는 절대 넣지 않는다."""
+    counts = {}
+    for kw in keywords:
         try:
-            blog_count = naver_blog_search.keyword_saturation(r["keyword"])["total_count"]
+            counts[kw] = naver_blog_search.keyword_saturation(kw)["total_count"]
         except Exception as e:
-            log.append(f"[naver_blog_search:{r['keyword']}] 실패: {e}")
-            continue
-        r = dict(r, blog_count=blog_count,
-                 opportunity=round(r["monthly_total"] / max(blog_count, 1), 3))
-        options.append(r)
-    options.sort(key=lambda r: r["opportunity"], reverse=True)
-    return options
+            log.append(f"[naver_blog_search:{kw}] 실패: {e}")
+    return counts
 
 
 def _best_segment_for_category(segment_trends, category):
@@ -228,16 +220,6 @@ def build_report_data(report_date):
     history = _load_history()
     candidates = _pick_candidate_categories(segment_trends, report_date)
 
-    blog_saturation = []
-    for c in candidates:
-        try:
-            sat = naver_blog_search.keyword_saturation(c["keyword"])
-            c["total_count"] = sat["total_count"]
-        except Exception as e:
-            log.append(f"[naver_blog_search:{c['keyword']}] 실패: {e}")
-            c["total_count"] = None
-        blog_saturation.append({"keyword": c["keyword"], "total_count": c["total_count"] or 0})
-
     youtube_keywords = [c["keyword"] for c in candidates]
     youtube_top = _with_fallback(
         "youtube_trend",
@@ -245,33 +227,20 @@ def build_report_data(report_date):
         failed_sources, log,
     )
 
-    # 지식iN 최신 질문 (수술실 주제 후보). 실패해도 캐시로 대체하고 멈추지 않는다.
-    try:
-        or_questions = _with_fallback(
-            "naver_kin", naver_kin_search.recent_or_questions, failed_sources, log,
-        )
-    except Exception as e:
-        log.append(f"[naver_kin] 캐시도 없어 질문 없이 진행: {e}")
-        or_questions = []
-
+    # ---- AI용 데이터: 네이버 검색 API 결과는 넣지 않는다 ----
     candidates_out = []
     for c in candidates:
-        total_count = c.get("total_count")
-        saturation = _saturation_label(total_count) if total_count is not None else "확인불가"
         if c["rising_pct"] is not None:
             trend_desc = f"검색 관심도 최근 7일 평균이 이전 7일 대비 {c['rising_pct']:+.1f}% 상승 (타겟: {c['segment']})"
         else:
             trend_desc = "최근 상승률 데이터는 부족하지만 로테이션상 오늘 다룰 차례"
-        reason = f"{trend_desc}, 블로그 경쟁도 {saturation}. 매일 다른 카테고리를 다루기 위한 로테이션 배정."
-        longtails = _longtail_options(c["category"], c["keyword"], log)
         candidates_out.append({
-            "longtail_options": longtails,
             "keyword": c["keyword"],
             "category": c["category"],
             "segment": c["segment"],
             "rising_pct": c["rising_pct"],
-            "total_count": total_count,
-            "reason": reason,
+            "longtail_options": _longtail_options(c["keyword"], log),
+            "reason": f"{trend_desc}. 매일 다른 카테고리를 다루기 위한 로테이션 배정.",
         })
 
     _save_history(history + [{
@@ -286,12 +255,29 @@ def build_report_data(report_date):
         "or_axes": _todays_or_axes(report_date),
         "published_posts_path": PUBLISHED_POSTS_PATH,
         "or_knowledge_map_path": OR_KNOWLEDGE_MAP_PATH,
-        "or_questions": or_questions,
         "segment_trends": segment_trends,
         "youtube_top": youtube_top,
-        "blog_saturation": blog_saturation,
     }
-    return data, log
+
+    # ---- 표시 전용 데이터: 네이버 검색 API 결과. PDF 조립 때 report_builder.py가 직접 붙인다 ----
+    count_keywords = []
+    for c in candidates_out:
+        count_keywords.append(c["keyword"])
+        count_keywords.extend(o["keyword"] for o in c["longtail_options"])
+    try:
+        or_questions = _with_fallback(
+            "naver_kin", naver_kin_search.recent_or_questions, failed_sources, log,
+        )
+    except Exception as e:
+        log.append(f"[naver_kin] 캐시도 없어 질문 없이 진행: {e}")
+        or_questions = []
+    display = {
+        "report_date": data["report_date"],
+        "notice": "네이버 검색 API 결과 — 표시 전용. AI(에이전트)는 이 파일을 열거나 읽지 않는다.",
+        "blog_counts": _display_blog_counts(dict.fromkeys(count_keywords), log),
+        "or_questions": or_questions,
+    }
+    return data, display, log
 
 
 def run():
@@ -300,8 +286,12 @@ def run():
     log_lines = [f"=== {today} 실행 시작 ==="]
 
     try:
-        data, fetch_log = build_report_data(today)
+        data, display, fetch_log = build_report_data(today)
         log_lines.extend(fetch_log)
+
+        display_path = os.path.join(DATA_DIR, f"display_{data['report_date']}.json")
+        with open(display_path, "w", encoding="utf-8") as f:
+            json.dump(display, f, ensure_ascii=False, indent=2)
 
         data_path = os.path.join(DATA_DIR, f"candidates_{data['report_date']}.json")
         with open(data_path, "w", encoding="utf-8") as f:
@@ -322,7 +312,10 @@ def run():
         else:
             log_lines.append("검색광고 API 키 없음 — 롱테일 후보 없이 기존 키워드로 진행")
         log_lines.append("오늘 수술실 주제 축: " + ", ".join(data["or_axes"]))
-        log_lines.append(f"지식iN 수술 관련 질문 {len(data['or_questions'])}개 수집")
+        log_lines.append(
+            f"표시 전용 네이버 검색 데이터 저장(에이전트는 열지 말 것): 블로그 글 수 "
+            f"{len(display['blog_counts'])}개, 지식iN 질문 {len(display['or_questions'])}개"
+        )
 
     except Exception as e:
         log_lines.append(f"치명적 오류로 실행 중단: {e}\n{traceback.format_exc()}")

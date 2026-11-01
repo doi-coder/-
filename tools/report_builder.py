@@ -84,7 +84,46 @@ def _table(rows, col_widths, font, font_bold):
     return Table(rows, colWidths=col_widths, style=style, repeatRows=1)
 
 
-def generate_report(data, output_path, logo_path=None):
+def _load_side_data(input_path, report_date):
+    """같은 폴더의 display_<날짜>.json(네이버 검색 결과, 표시 전용)과 candidates_<날짜>.json을 읽는다.
+
+    네이버 검색 API 결과는 2026-09-07 개정 약관상 AI에 넣을 수 없어서, 에이전트가 만드는 JSON에는
+    들어가지 않는다. 대신 이 스크립트(사람이 보는 PDF를 조립하는 코드)가 직접 읽어 출처와 함께
+    그대로 표시한다.
+    """
+    base = os.path.dirname(os.path.abspath(input_path)) if input_path else ""
+    out = {}
+    for name in ("display", "candidates"):
+        path = os.path.join(base, f"{name}_{report_date}.json")
+        if base and os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                out[name] = json.load(f)
+    return out.get("display", {}), out.get("candidates", {})
+
+
+def _fetch_blog_counts(keywords, known):
+    """PDF 표시용 블로그 글 수. display 파일에 없는 키워드(에이전트가 고른 수술실 주제 등)만 새로 조회."""
+    counts = dict(known)
+    missing = [k for k in dict.fromkeys(keywords) if k and k not in counts]
+    if not missing:
+        return counts
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import naver_blog_search
+        for k in missing:
+            try:
+                counts[k] = naver_blog_search.keyword_saturation(k)["total_count"]
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return counts
+
+
+NAVER_SOURCE_NOTE = "출처: 네이버 검색(블로그·지식iN) 결과를 가공 없이 표시. AI 분석에는 사용하지 않음."
+
+
+def generate_report(data, output_path, logo_path=None, input_path=None):
     """data 형식:
     {
       "report_date": "2026-07-25",
@@ -103,17 +142,31 @@ def generate_report(data, output_path, logo_path=None):
       "or_axes": [str, ...],                    # (선택) 오늘의 수술실 주제 축
       "or_topics": [                            # (선택) 수술실 업무 주제 추천 3개
         {"title", "keyword", "axis", "source", "source_detail", "target", "outline",
-         "differentiation", "total_count"}, ...
+         "differentiation"}, ...
       ],
-      "or_questions": [{"query", "title", "description", "link"}, ...],  # (선택) 지식iN 최신 질문
+      # 네이버 검색 결과(블로그 글 수, 지식iN 질문)는 여기 넣지 않는다 — 같은 폴더의
+      # display_<날짜>.json에서 이 스크립트가 직접 읽어 표시한다 (AI 입력 금지 약관 대응).
       "segment_trends": {"30대 x 여성": [{"category": str, "rising_pct": float|None}, ...], ...},
       "youtube_top": [{"title","channel","view_count","like_count","url"}, ...],
-      "blog_saturation": [{"keyword": str, "total_count": int}, ...],
     }
     """
     font, font_bold = _register_korean_font()
     styles = _build_styles(font, font_bold)
     story = []
+
+    display, candidates = _load_side_data(input_path, data.get("report_date", ""))
+    longtails_by_seed = {
+        c.get("keyword"): c.get("longtail_options", []) for c in candidates.get("candidates", [])
+    }
+    count_keywords = [p.get("keyword") for p in data.get("posts", [])]
+    count_keywords += [t.get("keyword") for t in data.get("or_topics", [])]
+    for opts in longtails_by_seed.values():
+        count_keywords += [o.get("keyword") for o in opts]
+    blog_counts = _fetch_blog_counts(count_keywords, display.get("blog_counts", {}))
+
+    def _count_text(kw):
+        n = blog_counts.get(kw)
+        return f"{n:,}건" if isinstance(n, int) else "확인불가"
 
     if logo_path and os.path.exists(logo_path):
         story.append(Image(logo_path, width=30 * mm, height=30 * mm))
@@ -140,6 +193,20 @@ def generate_report(data, output_path, logo_path=None):
         if post.get("differentiation"):
             story.append(Paragraph(f"<b>기존 글과의 차별점</b>: {post['differentiation']}", styles["KBody"]))
         story.append(Paragraph(f"※ 데이터 근거: {post.get('reason', '-')}", styles["KNote"]))
+        story.append(Paragraph(
+            f"※ 네이버 블로그 검색 결과: {_count_text(post['keyword'])} (참고용, AI 미사용)", styles["KNote"],
+        ))
+        opts = longtails_by_seed.get(post.get("seed_keyword") or post["keyword"], [])
+        if opts:
+            rows = [["롱테일 후보", "월간 검색량", "광고 경쟁", "블로그 글 수"]]
+            for o in opts:
+                rows.append([o["keyword"], f'{o["monthly_total"]:,}', o.get("competition") or "-",
+                             _count_text(o["keyword"])])
+            story.append(Spacer(1, 4))
+            story.append(_table(rows, [62 * mm, 32 * mm, 26 * mm, 50 * mm], font, font_bold))
+            story.append(Paragraph(
+                "월간 검색량·광고 경쟁: 네이버 검색광고 / 블로그 글 수: 네이버 검색(표시 전용)", styles["KNote"],
+            ))
         story.append(Paragraph("※ 전체 포스팅 초안은 별첨 텍스트 파일을 참고하세요.", styles["KNote"]))
         story.append(Spacer(1, 12))
 
@@ -159,15 +226,18 @@ def generate_report(data, output_path, logo_path=None):
             story.append(Paragraph(f"<b>타겟 독자</b>: {t.get('target', '-')}", styles["KBody"]))
             story.append(Paragraph(f"<b>다룰 내용</b>: {t.get('outline', '-')}", styles["KBody"]))
             story.append(Paragraph(f"<b>기존 글과의 차별점</b>: {t.get('differentiation', '-')}", styles["KBody"]))
-            if t.get("total_count") is not None:
-                story.append(Paragraph(
-                    f"※ 블로그 경쟁도: {t['total_count']:,}건", styles["KNote"],
-                ))
+            story.append(Paragraph(
+                f"※ 네이버 블로그 검색 결과: {_count_text(t.get('keyword'))} (참고용, AI 미사용)", styles["KNote"],
+            ))
             story.append(Spacer(1, 12))
 
-    or_questions = data.get("or_questions", [])
+    or_questions = display.get("or_questions", [])
     if or_questions:
-        story.append(Paragraph("참고: 지식iN 수술 관련 질문", styles["KHeading"]))
+        story.append(Paragraph("직접 훑어보기: 지식iN 수술 관련 질문", styles["KHeading"]))
+        story.append(Paragraph(
+            "실제로 사람들이 올린 질문이에요. 글감이 될 만한 게 있는지 직접 골라보세요. " + NAVER_SOURCE_NOTE,
+            styles["KNote"],
+        ))
         rows = [["검색어", "질문"]]
         for q in or_questions[:15]:
             rows.append([
@@ -200,12 +270,6 @@ def generate_report(data, output_path, logo_path=None):
         ])
     story.append(_table(rows, [90 * mm, 40 * mm, 20 * mm, 20 * mm], font, font_bold))
 
-    story.append(Paragraph("참고: 키워드별 블로그 포화도", styles["KHeading"]))
-    rows = [["키워드", "전체 게시물 수(추정)"]]
-    for item in data.get("blog_saturation", []):
-        rows.append([item["keyword"], f'{item["total_count"]:,}'])
-    story.append(_table(rows, [80 * mm, 90 * mm], font, font_bold))
-
     story.append(Spacer(1, 16))
     story.append(Paragraph(
         "※ 본 리포트는 검색 트렌드 기반의 참고 자료이며 의학적 진단이나 치료를 단정하는 내용이 아닙니다. "
@@ -226,7 +290,7 @@ if __name__ == "__main__":
         in_path, out_path = sys.argv[1], sys.argv[2]
         with open(in_path, "r", encoding="utf-8") as f:
             payload = json.load(f)
-        result = generate_report(payload, out_path)
+        result = generate_report(payload, out_path, input_path=in_path)
         print(f"생성됨: {result}")
     else:
         sample = {
@@ -261,13 +325,10 @@ if __name__ == "__main__":
                     "target": "마취과 순환 간호사, 수술실 신규 간호사",
                     "outline": "PONV 위험요인 → 예방 약물 계열 → 수술실에서 간호사가 챙길 포인트",
                     "differentiation": "기존 근이완제·브레비블록 글과 겹치지 않는 구토 예방 축. 석시콜린 글 내부링크 후보.",
-                    "total_count": 3200,
                 },
             ],
-            "or_questions": [{"query": "수술 후 소변줄", "title": "수술 후 소변줄 언제 빼나요?", "description": "", "link": "https://kin.naver.com"}],
             "segment_trends": {"30대 x 여성": [{"category": "영양제/보충제", "rising_pct": 42.3}]},
             "youtube_top": [{"title": "샘플 영상", "channel": "샘플 채널", "view_count": 123456, "like_count": 3456, "url": "https://youtube.com"}],
-            "blog_saturation": [{"keyword": "오메가3", "total_count": 152000}],
         }
         out = generate_report(sample, os.path.join(os.path.dirname(__file__), "..", ".tmp", "sample_report.pdf"))
         print(f"생성됨: {out}")
