@@ -25,6 +25,7 @@ from datetime import datetime
 sys.path.insert(0, os.path.dirname(__file__))
 import naver_trend
 import naver_blog_search
+import naver_kin_search
 import youtube_trend
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -36,6 +37,8 @@ LOG_DIR = os.path.join(TMP_DIR, "logs")
 HISTORY_PATH = os.path.join(TMP_DIR, "recommendation_history.json")
 # 이미 발행한 글 목록. .tmp/는 실행마다 초기화되므로 저장소에 커밋된 파일을 쓴다.
 PUBLISHED_POSTS_PATH = os.path.join(BASE_DIR, "data", "published_posts.md")
+# 수술실 업무 지식 체크리스트 (영역별 ✅ 이미 씀 / ⬜ 아직 안 씀). 2026-11-01 추가.
+OR_KNOWLEDGE_MAP_PATH = os.path.join(BASE_DIR, "data", "or_knowledge_map.md")
 
 # 2026-11-01 사장님 요청: 건강 주제 2개 -> 3개로 확장
 CATEGORIES_PER_DAY = 3
@@ -49,7 +52,8 @@ OR_TOPIC_AXES = [
     "외과(GS)·복강경 수술",
     "신경외과·척추 수술",
     "산부인과·비뇨의학과 수술",
-    "이비인후과·성형외과·안과 등 기타 과 수술",
+    # 성형외과는 사장님이 수술에 들어가지 않으므로 축에서 제외 (운영·시스템 각도로만 다룸)
+    "이비인후과·안과·흉부외과·혈관외과 등 기타 과 수술",
     "감염관리·소독·멸균",
     "마취·수술 약물",
     "수술실 장비·소모품(전기소작기, 석션, 봉합사, 드레싱 등)",
@@ -198,6 +202,15 @@ def build_report_data(report_date):
         failed_sources, log,
     )
 
+    # 지식iN 최신 질문 (수술실 주제 후보). 실패해도 캐시로 대체하고 멈추지 않는다.
+    try:
+        or_questions = _with_fallback(
+            "naver_kin", naver_kin_search.recent_or_questions, failed_sources, log,
+        )
+    except Exception as e:
+        log.append(f"[naver_kin] 캐시도 없어 질문 없이 진행: {e}")
+        or_questions = []
+
     candidates_out = []
     for c in candidates:
         total_count = c.get("total_count")
@@ -227,6 +240,8 @@ def build_report_data(report_date):
         "candidates": candidates_out,
         "or_axes": _todays_or_axes(report_date),
         "published_posts_path": PUBLISHED_POSTS_PATH,
+        "or_knowledge_map_path": OR_KNOWLEDGE_MAP_PATH,
+        "or_questions": or_questions,
         "segment_trends": segment_trends,
         "youtube_top": youtube_top,
         "blog_saturation": blog_saturation,
@@ -257,6 +272,7 @@ def run():
             ", ".join(c["keyword"] for c in data["candidates"])
         )
         log_lines.append("오늘 수술실 주제 축: " + ", ".join(data["or_axes"]))
+        log_lines.append(f"지식iN 수술 관련 최신 질문 {len(data['or_questions'])}개 수집")
 
     except Exception as e:
         log_lines.append(f"치명적 오류로 실행 중단: {e}\n{traceback.format_exc()}")

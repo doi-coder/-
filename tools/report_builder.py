@@ -102,8 +102,10 @@ def generate_report(data, output_path, logo_path=None):
       ],
       "or_axes": [str, ...],                    # (선택) 오늘의 수술실 주제 축
       "or_topics": [                            # (선택) 수술실 업무 주제 추천 3개
-        {"title", "keyword", "axis", "target", "outline", "differentiation", "total_count"}, ...
+        {"title", "keyword", "axis", "source", "source_detail", "target", "outline",
+         "differentiation", "total_count"}, ...
       ],
+      "or_questions": [{"query", "title", "description", "link"}, ...],  # (선택) 지식iN 최신 질문
       "segment_trends": {"30대 x 여성": [{"category": str, "rising_pct": float|None}, ...], ...},
       "youtube_top": [{"title","channel","view_count","like_count","url"}, ...],
       "blog_saturation": [{"keyword": str, "total_count": int}, ...],
@@ -152,6 +154,8 @@ def generate_report(data, output_path, logo_path=None):
             story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#DDDDDD"), spaceAfter=6))
             story.append(Paragraph(f"<b>메인 키워드</b>: {t.get('keyword', '-')}", styles["KBody"]))
             story.append(Paragraph(f"<b>주제 축</b>: {t.get('axis', '-')}", styles["KBody"]))
+            if t.get("source"):
+                story.append(Paragraph(f"<b>출처</b>: {t['source']} — {t.get('source_detail', '')}", styles["KBody"]))
             story.append(Paragraph(f"<b>타겟 독자</b>: {t.get('target', '-')}", styles["KBody"]))
             story.append(Paragraph(f"<b>다룰 내용</b>: {t.get('outline', '-')}", styles["KBody"]))
             story.append(Paragraph(f"<b>기존 글과의 차별점</b>: {t.get('differentiation', '-')}", styles["KBody"]))
@@ -160,6 +164,17 @@ def generate_report(data, output_path, logo_path=None):
                     f"※ 블로그 경쟁도: {t['total_count']:,}건", styles["KNote"],
                 ))
             story.append(Spacer(1, 12))
+
+    or_questions = data.get("or_questions", [])
+    if or_questions:
+        story.append(Paragraph("참고: 지식iN 수술 관련 최신 질문", styles["KHeading"]))
+        rows = [["검색어", "질문"]]
+        for q in or_questions[:15]:
+            rows.append([
+                q.get("query", ""),
+                Paragraph(f'<link href="{q["link"]}">{q["title"]}</link>', styles["KBody"]),
+            ])
+        story.append(_table(rows, [35 * mm, 135 * mm], font, font_bold))
 
     story.append(Paragraph("세그먼트별 상승 키워드 (연령대 x 성별)", styles["KHeading"]))
     rows = [["세그먼트", "상위 상승 카테고리"]]
@@ -241,12 +256,15 @@ if __name__ == "__main__":
                     "title": "수술 후 PONV, 마취과에서 미리 막는 약은 뭘까",
                     "keyword": "PONV",
                     "axis": "마취·수술 약물",
+                    "source": "업무 지식 체크리스트 빈칸",
+                    "source_detail": "I. 마취 협력·약물 — 악성고열증",
                     "target": "마취과 순환 간호사, 수술실 신규 간호사",
                     "outline": "PONV 위험요인 → 예방 약물 계열 → 수술실에서 간호사가 챙길 포인트",
                     "differentiation": "기존 근이완제·브레비블록 글과 겹치지 않는 구토 예방 축. 석시콜린 글 내부링크 후보.",
                     "total_count": 3200,
                 },
             ],
+            "or_questions": [{"query": "수술 후 소변줄", "title": "수술 후 소변줄 언제 빼나요?", "description": "", "link": "https://kin.naver.com"}],
             "segment_trends": {"30대 x 여성": [{"category": "영양제/보충제", "rising_pct": 42.3}]},
             "youtube_top": [{"title": "샘플 영상", "channel": "샘플 채널", "view_count": 123456, "like_count": 3456, "url": "https://youtube.com"}],
             "blog_saturation": [{"keyword": "오메가3", "total_count": 152000}],

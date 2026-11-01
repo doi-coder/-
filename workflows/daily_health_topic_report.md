@@ -81,12 +81,12 @@
      `_draft2.txt`, `_draft3.txt`로 각각 저장한다 (순서는 candidates 순서대로). 파일 맨 위에
      `search_intent`/`target_analysis`/`keyword_analysis`를 요약한 분석 블록을 먼저 적고,
      그 아래에 실제 초안을 쓴다 (economy_daily_reports.md와 같은 형식).
-4-1. **수술실 업무 주제 3개를 정한다** (아래 "수술실 주제 추천 지침" 참고). JSON의 `or_axes`
-   (오늘의 주제 축 3개)에서 축마다 1개씩 고르고, 각 주제의 메인 키워드로
-   `tools/naver_blog_search.py`의 `keyword_saturation()`을 실행해 `total_count`를 채운다.
-   각 항목은 `title`, `keyword`, `axis`, `target`, `outline`, `differentiation`, `total_count`.
+4-1. **수술실 업무 주제 3개를 정한다** (아래 "수술실 주제 추천 지침" 참고 — 출처 3종에서
+   하나씩). 각 주제의 메인 키워드로 `tools/naver_blog_search.py`의 `keyword_saturation()`을
+   실행해 `total_count`를 채운다. 각 항목은 `title`, `keyword`, `axis`, `source`,
+   `source_detail`, `target`, `outline`, `differentiation`, `total_count`.
 5. 위에서 채운 내용으로 `posts` 배열을 만들어 `candidates`를 대체하고, 수술실 주제는
-   `or_topics` 배열로 추가한다 (다른 필드 `or_axes`/`segment_trends`/`youtube_top`/
+   `or_topics` 배열로 추가한다 (다른 필드 `or_axes`/`or_questions`/`segment_trends`/`youtube_top`/
    `blog_saturation`/`failed_sources`/`report_date`는 그대로 유지),
    `.tmp/health_data/report_<날짜>.json`로 저장한다.
 6. `python tools/report_builder.py <5번 json경로> .tmp/reports/health_report_<날짜>.pdf`를
@@ -120,12 +120,24 @@
 - 건강 키워드는 데이터로 배정된 것이라 바꾸지 않는다 — 이미 쓴 키워드가 배정되면 키워드는
   유지하고 각도를 바꾼다.
 - 2024년 경제 글은 현재 방향과 무관하므로 중복 판단에서 무시해도 된다.
-- 사장님이 새 글을 발행하면 이 파일 맨 위(해당 연도 섹션)에 한 줄씩 추가한다.
+- 사장님이 새 글을 발행하면 이 파일 맨 위(해당 연도 섹션)에 한 줄씩 추가하고, 수술실 글이면
+  `data/or_knowledge_map.md`의 해당 항목도 ✅로 바꾼다.
 
 ## 수술실 주제 추천 지침
 - 블로그 컨셉: 현직 수술실(스크럽) 간호사 '도이'가 신규 수술실 간호사·간호학생, 그리고 수술을
   앞둔 일반인에게 설명하는 블로그.
-- 오늘의 `or_axes` 3개에서 축마다 1개씩 고른다. 축 안의 구체적 주제는 에이전트가 정한다.
+- 사장님은 성형외과를 제외한 거의 모든 과 수술에 들어간다. 성형외과는 수술 자체가 아니라
+  운영·시스템 각도로만 다룬다.
+- **3개 주제는 서로 다른 출처에서 하나씩 고른다** (2026-11-01 확정). 에이전트의 머릿속 지식만으로
+  주제를 떠올리지 않기 위함이다. 각 주제의 `source`/`source_detail`에 출처를 적는다.
+  1. `"지식iN 질문"` — JSON의 `or_questions`(실제로 사람들이 올린 최신 질문)에서 블로그 글로
+     풀 만한 질문을 고른다. `source_detail`에는 질문 제목과 링크. 비슷한 질문이 여러 개면
+     수요가 있다는 신호이니 우선한다. 질문이 비어 있으면(수집 실패) 2번에서 하나 더 고른다.
+  2. `"업무 지식 체크리스트 빈칸"` — `data/or_knowledge_map.md`에서 ⬜(아직 안 씀) 또는
+     🔶(일부만) 항목을 고른다. `source_detail`에는 영역과 항목명.
+  3. `"오늘의 주제 축"` — JSON의 `or_axes` 3개 중 1·2번과 겹치지 않는 축에서 고른다.
+     `source_detail`에는 축 이름.
+- `axis`에는 그 주제가 속하는 `or_axes` 축 이름을 적는다 (축과 무관하면 가장 가까운 분류).
 - 발행 글 조회수에서 확인된 강한 유형을 우선 참고한다:
   (1) 기구·수술 방식 비교형 — IM nail 기구, hip bipolar vs THR, femur nail 기구 등이 4천~5천대
   (2) 환자 질문에 수술실 간호사가 답하는 형 — 복강경 후 어깨 통증, 수술 탈의, 수술 전 금식 등
@@ -156,6 +168,7 @@
 - PDF: `.tmp/reports/health_report_YYYY-MM-DD.pdf`
 - 블로그 초안(건강 3개): `.tmp/reports/health_report_YYYY-MM-DD_draft1.txt` ~ `_draft3.txt`
 - 발행 글 목록(중복 방지 기준): `data/published_posts.md`
+- 수술실 업무 지식 체크리스트: `data/or_knowledge_map.md`
 - 데이터 수집 결과(1단계, Tool 산출물): `.tmp/health_data/candidates_YYYY-MM-DD.json`
 - 최종 리포트 데이터(2단계, Agent가 posts를 채운 결과): `.tmp/health_data/report_YYYY-MM-DD.json`
 - 실행 로그: `.tmp/logs/YYYY-MM-DD.log`
@@ -176,6 +189,7 @@
 ## 사용하는 Tool
 - `tools/naver_trend.py` — 데이터랩 검색어트렌드 (연령대x성별 상승 키워드)
 - `tools/naver_blog_search.py` — 블로그 검색 (경쟁도/포화도 참고자료)
+- `tools/naver_kin_search.py` — 지식iN 최신 질문 수집 (수술실 주제 후보, 같은 네이버 키 사용)
 - `tools/youtube_trend.py` — 유튜브 인기 건강 콘텐츠
 - `tools/run_daily_report.py` — 위 3개를 순서대로 실행해 오늘의 후보 데이터(JSON)를 만드는
   1단계 오케스트레이터. PDF는 만들지 않는다 — 검색의도 분석·제목·초안 작성은 사람(에이전트)이
