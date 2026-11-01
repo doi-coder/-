@@ -34,8 +34,29 @@ DATA_DIR = os.path.join(TMP_DIR, "health_data")
 REPORT_DIR = os.path.join(TMP_DIR, "reports")
 LOG_DIR = os.path.join(TMP_DIR, "logs")
 HISTORY_PATH = os.path.join(TMP_DIR, "recommendation_history.json")
+# 이미 발행한 글 목록. .tmp/는 실행마다 초기화되므로 저장소에 커밋된 파일을 쓴다.
+PUBLISHED_POSTS_PATH = os.path.join(BASE_DIR, "data", "published_posts.md")
 
-CATEGORIES_PER_DAY = 2
+# 2026-11-01 사장님 요청: 건강 주제 2개 -> 3개로 확장
+CATEGORIES_PER_DAY = 3
+
+# 2026-11-01 사장님 요청: 매일 수술실 업무 주제 3개도 함께 추천.
+# 수술실 주제는 데이터랩 검색량이 거의 잡히지 않는 전문 용어가 많아서, 건강 카테고리처럼
+# 날짜 로테이션으로 "오늘 생각해볼 주제 축" 3개를 배정하고 구체적 주제는 에이전트가 정한다.
+# '환자 질문형'은 발행 글 중 조회수가 높은 유형(복강경 후 어깨 통증, 수술 탈의, 금식 등)이라 포함.
+OR_TOPIC_AXES = [
+    "정형외과(OS) 수술·기구",
+    "외과(GS)·복강경 수술",
+    "신경외과·척추 수술",
+    "산부인과·비뇨의학과 수술",
+    "이비인후과·성형외과·안과 등 기타 과 수술",
+    "감염관리·소독·멸균",
+    "마취·수술 약물",
+    "수술실 장비·소모품(전기소작기, 석션, 봉합사, 드레싱 등)",
+    "신규 간호사 실무·커리어",
+    "환자 질문형(수술받는 일반인이 수술실에 대해 궁금해하는 것)",
+]
+OR_TOPICS_PER_DAY = 3
 
 SATURATION_LABELS = [(50_000, "낮음"), (200_000, "보통")]
 
@@ -109,6 +130,13 @@ def _todays_categories(today):
     day_index = today.timetuple().tm_yday
     start = (day_index * CATEGORIES_PER_DAY) % n
     return [order[(start + i) % n] for i in range(CATEGORIES_PER_DAY)]
+
+
+def _todays_or_axes(today):
+    """오늘 다룰 수술실 주제 축 3개를 날짜 로테이션으로 뽑는다 (건강 카테고리와 같은 방식)."""
+    n = len(OR_TOPIC_AXES)
+    start = (today.timetuple().tm_yday * OR_TOPICS_PER_DAY) % n
+    return [OR_TOPIC_AXES[(start + i) % n] for i in range(OR_TOPICS_PER_DAY)]
 
 
 def _keyword_for_category(category, today):
@@ -197,6 +225,8 @@ def build_report_data(report_date):
         "report_date": report_date.strftime("%Y-%m-%d"),
         "failed_sources": failed_sources,
         "candidates": candidates_out,
+        "or_axes": _todays_or_axes(report_date),
+        "published_posts_path": PUBLISHED_POSTS_PATH,
         "segment_trends": segment_trends,
         "youtube_top": youtube_top,
         "blog_saturation": blog_saturation,
@@ -226,6 +256,7 @@ def run():
             f"오늘 배정된 키워드 {len(data['candidates'])}개: " +
             ", ".join(c["keyword"] for c in data["candidates"])
         )
+        log_lines.append("오늘 수술실 주제 축: " + ", ".join(data["or_axes"]))
 
     except Exception as e:
         log_lines.append(f"치명적 오류로 실행 중단: {e}\n{traceback.format_exc()}")

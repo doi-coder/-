@@ -50,10 +50,10 @@ def _register_korean_font():
 def _build_styles(font, font_bold):
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(
-        "KTitle", fontName=font_bold, fontSize=24, textColor=BRAND_PRIMARY, spaceAfter=6,
+        "KTitle", fontName=font_bold, fontSize=24, leading=30, textColor=BRAND_PRIMARY, spaceAfter=6,
     ))
     styles.add(ParagraphStyle(
-        "KSubtitle", fontName=font, fontSize=12, textColor=BRAND_TEXT, spaceAfter=20,
+        "KSubtitle", fontName=font, fontSize=12, leading=16, textColor=BRAND_TEXT, spaceAfter=20,
     ))
     styles.add(ParagraphStyle(
         "KHeading", fontName=font_bold, fontSize=15, textColor=BRAND_PRIMARY,
@@ -97,7 +97,12 @@ def generate_report(data, output_path, logo_path=None):
           "target_analysis": str,               # 타겟 독자 분석
           "keyword_analysis": str,              # 메인 키워드 분석(경쟁도·상승률 등 근거)
           "reason": str,                        # run_daily_report.py가 만든 데이터 기반 추천 이유
+          "differentiation": str,               # (선택) 이미 쓴 관련 글이 있을 때, 이번 글의 다른 각도
         }, ...
+      ],
+      "or_axes": [str, ...],                    # (선택) 오늘의 수술실 주제 축
+      "or_topics": [                            # (선택) 수술실 업무 주제 추천 3개
+        {"title", "keyword", "axis", "target", "outline", "differentiation", "total_count"}, ...
       ],
       "segment_trends": {"30대 x 여성": [{"category": str, "rising_pct": float|None}, ...], ...},
       "youtube_top": [{"title","channel","view_count","like_count","url"}, ...],
@@ -112,7 +117,7 @@ def generate_report(data, output_path, logo_path=None):
         story.append(Image(logo_path, width=30 * mm, height=30 * mm))
         story.append(Spacer(1, 10))
 
-    story.append(Paragraph("건강 콘텐츠 트렌드 리포트", styles["KTitle"]))
+    story.append(Paragraph("건강·수술실 콘텐츠 리포트", styles["KTitle"]))
     story.append(Paragraph(f"{data['report_date']} · 네이버 블로그 포스팅 주제 추천", styles["KSubtitle"]))
 
     if data.get("failed_sources"):
@@ -130,9 +135,31 @@ def generate_report(data, output_path, logo_path=None):
         story.append(Paragraph(f"<b>검색 의도</b>: {post.get('search_intent', '-')}", styles["KBody"]))
         story.append(Paragraph(f"<b>타겟 독자</b>: {post.get('target_analysis', '-')}", styles["KBody"]))
         story.append(Paragraph(f"<b>키워드 분석</b>: {post.get('keyword_analysis', '-')}", styles["KBody"]))
+        if post.get("differentiation"):
+            story.append(Paragraph(f"<b>기존 글과의 차별점</b>: {post['differentiation']}", styles["KBody"]))
         story.append(Paragraph(f"※ 데이터 근거: {post.get('reason', '-')}", styles["KNote"]))
         story.append(Paragraph("※ 전체 포스팅 초안은 별첨 텍스트 파일을 참고하세요.", styles["KNote"]))
         story.append(Spacer(1, 12))
+
+    or_topics = data.get("or_topics", [])
+    if or_topics:
+        story.append(PageBreak())
+        story.append(Paragraph("오늘의 수술실 업무 주제 추천", styles["KTitle"]))
+        if data.get("or_axes"):
+            story.append(Paragraph(f"오늘의 주제 축: {', '.join(data['or_axes'])}", styles["KSubtitle"]))
+        for i, t in enumerate(or_topics, start=1):
+            story.append(Paragraph(f"{i}. {t['title']}", styles["KHeading"]))
+            story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#DDDDDD"), spaceAfter=6))
+            story.append(Paragraph(f"<b>메인 키워드</b>: {t.get('keyword', '-')}", styles["KBody"]))
+            story.append(Paragraph(f"<b>주제 축</b>: {t.get('axis', '-')}", styles["KBody"]))
+            story.append(Paragraph(f"<b>타겟 독자</b>: {t.get('target', '-')}", styles["KBody"]))
+            story.append(Paragraph(f"<b>다룰 내용</b>: {t.get('outline', '-')}", styles["KBody"]))
+            story.append(Paragraph(f"<b>기존 글과의 차별점</b>: {t.get('differentiation', '-')}", styles["KBody"]))
+            if t.get("total_count") is not None:
+                story.append(Paragraph(
+                    f"※ 블로그 경쟁도: {t['total_count']:,}건", styles["KNote"],
+                ))
+            story.append(Spacer(1, 12))
 
     story.append(Paragraph("세그먼트별 상승 키워드 (연령대 x 성별)", styles["KHeading"]))
     rows = [["세그먼트", "상위 상승 카테고리"]]
@@ -206,6 +233,18 @@ if __name__ == "__main__":
                     "target_analysis": "야근·성과 압박이 큰 3040 직장인, 특히 관리자급. 병원 가기 전에 스스로 먼저 확인해보고 싶어함.",
                     "keyword_analysis": "'번아웃증후군' 블로그 경쟁도 보통, 최근 7일 상승률 +18.5%로 시의성 있음.",
                     "reason": "검색 관심도 최근 7일 평균이 이전 7일 대비 +18.5% 상승 (타겟: 40대 x 남성), 블로그 경쟁도 보통. 매일 다른 카테고리를 다루기 위한 로테이션 배정.",
+                },
+            ],
+            "or_axes": ["마취·수술 약물", "외과(GS)·복강경 수술", "환자 질문형(수술받는 일반인이 수술실에 대해 궁금해하는 것)"],
+            "or_topics": [
+                {
+                    "title": "수술 후 PONV, 마취과에서 미리 막는 약은 뭘까",
+                    "keyword": "PONV",
+                    "axis": "마취·수술 약물",
+                    "target": "마취과 순환 간호사, 수술실 신규 간호사",
+                    "outline": "PONV 위험요인 → 예방 약물 계열 → 수술실에서 간호사가 챙길 포인트",
+                    "differentiation": "기존 근이완제·브레비블록 글과 겹치지 않는 구토 예방 축. 석시콜린 글 내부링크 후보.",
+                    "total_count": 3200,
                 },
             ],
             "segment_trends": {"30대 x 여성": [{"category": "영양제/보충제", "rising_pct": 42.3}]},
