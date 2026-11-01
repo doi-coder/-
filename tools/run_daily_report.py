@@ -26,6 +26,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 import naver_trend
 import naver_blog_search
 import naver_kin_search
+import naver_searchad
 import youtube_trend
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -63,6 +64,11 @@ OR_TOPIC_AXES = [
 OR_TOPICS_PER_DAY = 3
 
 SATURATION_LABELS = [(50_000, "낮음"), (200_000, "보통")]
+
+# 검색광고 연관키워드(롱테일) 설정 — 2026-11-01 추가. 키가 없으면 이 단계는 건너뛴다.
+LONGTAIL_MIN_MONTHLY = 300      # 월간 검색량(PC+모바일)이 이보다 적은 키워드는 버림
+LONGTAIL_PER_CANDIDATE = 8      # 후보 1개당 블로그 경쟁도까지 확인할 롱테일 수
+
 
 
 def _ensure_dirs():
@@ -149,6 +155,38 @@ def _keyword_for_category(category, today):
     return keywords[idx]
 
 
+def _longtail_options(category, seed, log):
+    """씨앗 키워드 + 같은 카테고리 키워드로 연관 키워드를 받아 '기회 점수' 순으로 정리.
+
+    기회 점수 = 월간 검색량 / 블로그 게시물 수. 검색은 많은데 글은 적을수록 높다.
+    에이전트는 이 목록에서 이미 쓴 글과 겹치지 않는 키워드를 골라 메인 키워드로 쓴다.
+    """
+    if not naver_searchad.is_configured():
+        return []
+    others = [k for k in naver_trend.HEALTH_CATEGORIES[category] if k != seed]
+    try:
+        rows = naver_searchad.related_keywords([seed] + others[:4])
+    except Exception as e:
+        log.append(f"[naver_searchad:{seed}] 실패: {e}")
+        return []
+    rows = [r for r in rows if r["monthly_total"] >= LONGTAIL_MIN_MONTHLY]
+    rows.sort(key=lambda r: r["monthly_total"], reverse=True)
+    options = []
+    for r in rows[:LONGTAIL_PER_CANDIDATE * 2]:
+        if len(options) >= LONGTAIL_PER_CANDIDATE:
+            break
+        try:
+            blog_count = naver_blog_search.keyword_saturation(r["keyword"])["total_count"]
+        except Exception as e:
+            log.append(f"[naver_blog_search:{r['keyword']}] 실패: {e}")
+            continue
+        r = dict(r, blog_count=blog_count,
+                 opportunity=round(r["monthly_total"] / max(blog_count, 1), 3))
+        options.append(r)
+    options.sort(key=lambda r: r["opportunity"], reverse=True)
+    return options
+
+
 def _best_segment_for_category(segment_trends, category):
     """해당 카테고리의 상승률이 가장 높은 세그먼트를 찾는다 (추천 이유 문구에 사용, 카테고리 선정 자체에는 안 씀)."""
     best_segment, best_pct = None, None
@@ -220,7 +258,9 @@ def build_report_data(report_date):
         else:
             trend_desc = "최근 상승률 데이터는 부족하지만 로테이션상 오늘 다룰 차례"
         reason = f"{trend_desc}, 블로그 경쟁도 {saturation}. 매일 다른 카테고리를 다루기 위한 로테이션 배정."
+        longtails = _longtail_options(c["category"], c["keyword"], log)
         candidates_out.append({
+            "longtail_options": longtails,
             "keyword": c["keyword"],
             "category": c["category"],
             "segment": c["segment"],
@@ -271,6 +311,11 @@ def run():
             f"오늘 배정된 키워드 {len(data['candidates'])}개: " +
             ", ".join(c["keyword"] for c in data["candidates"])
         )
+        if naver_searchad.is_configured():
+            log_lines.append("롱테일 후보: " + ", ".join(
+                f"{c['keyword']} {len(c['longtail_options'])}개" for c in data["candidates"]))
+        else:
+            log_lines.append("검색광고 API 키 없음 — 롱테일 후보 없이 기존 키워드로 진행")
         log_lines.append("오늘 수술실 주제 축: " + ", ".join(data["or_axes"]))
         log_lines.append(f"지식iN 수술 관련 최신 질문 {len(data['or_questions'])}개 수집")
 
