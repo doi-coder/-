@@ -19,8 +19,14 @@
 import json
 import os
 import sys
+import time
 import traceback
 from datetime import datetime
+
+# 클라우드 컨테이너는 UTC라 한국 아침 7시에 전날 날짜가 찍히는 문제 방지: 한국 시간 기준으로 고정
+os.environ["TZ"] = "Asia/Seoul"
+if hasattr(time, "tzset"):
+    time.tzset()
 
 sys.path.insert(0, os.path.dirname(__file__))
 import naver_trend
