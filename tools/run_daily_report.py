@@ -40,6 +40,7 @@ HISTORY_PATH = os.path.join(TMP_DIR, "recommendation_history.json")
 PUBLISHED_POSTS_PATH = os.path.join(BASE_DIR, "data", "published_posts.md")
 # 수술실 업무 지식 체크리스트 (영역별 ✅ 이미 씀 / ⬜ 아직 안 씀). 2026-11-01 추가.
 OR_KNOWLEDGE_MAP_PATH = os.path.join(BASE_DIR, "data", "or_knowledge_map.md")
+OR_RECOMMENDED_PATH = os.path.join(BASE_DIR, "data", "or_recommended_history.md")
 
 # 2026-11-01 사장님 요청: 건강 주제 2개 -> 3개로 확장
 CATEGORIES_PER_DAY = 3
@@ -255,6 +256,7 @@ def build_report_data(report_date):
         "or_axes": _todays_or_axes(report_date),
         "published_posts_path": PUBLISHED_POSTS_PATH,
         "or_knowledge_map_path": OR_KNOWLEDGE_MAP_PATH,
+        "or_recommended_history_path": OR_RECOMMENDED_PATH,
         "segment_trends": segment_trends,
         "youtube_top": youtube_top,
     }
